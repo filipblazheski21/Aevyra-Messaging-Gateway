@@ -1,0 +1,13 @@
+{
+  "name": "@aevyra/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "@aevyra/config": "0.1.0",
+    "@aevyra/db": "0.1.0"
+  }
+}
