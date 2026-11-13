@@ -20,6 +20,18 @@ const businessInsertColumns = {
     "organization_id", "contact_id", "purpose", "channel", "event_type", "operator_id", "revision",
     "idempotency_key", "request_fingerprint", "basis_type", "reference", "expires_at",
   ],
+  message_templates: ["organization_id", "purpose", "name", "created_by_operator_id"],
+  message_template_versions: [
+    "template_id", "organization_id", "version_number", "body", "allowed_variables", "created_by_operator_id",
+  ],
+  campaigns: ["organization_id", "purpose", "channel", "name", "template_version_id", "created_by_operator_id"],
+  campaign_recipients: ["campaign_id", "organization_id", "contact_id", "frozen_body"],
+  campaign_approvals: ["campaign_id", "organization_id", "decision", "operator_id"],
+  message_jobs: [
+    "organization_id", "campaign_id", "recipient_id", "contact_id", "channel", "frozen_body", "idempotency_key",
+  ],
+  message_job_events: ["job_id", "organization_id", "status", "detail"],
+  campaign_control_events: ["campaign_id", "organization_id", "action", "operator_id"],
 } as const;
 
 async function provisionBusinessTables(client: pg.Client, role: string, identifier: string) {

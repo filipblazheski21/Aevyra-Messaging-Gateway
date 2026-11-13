@@ -8,6 +8,7 @@ import type { CsvDelimiter, ImportPreview, ImportSource, PhoneAssessment, XlsxSh
 import type { Organization, OrganizationKind, OrganizationPage } from "../../organizations.ts";
 import { Count, ExcludedCounts, ImportHistory, ImportRecovery, ImportResult, useContactImport } from "./contact-import-controls.tsx";
 import type { PreviewResponse } from "./contact-import-controls.tsx";
+import { CampaignControls } from "./campaign-controls.tsx";
 import { ContactList } from "./contact-list.tsx";
 import { errorMessage, primaryButton, RegistryError, registryRequest, secondaryButton } from "./registry-ui.tsx";
 
@@ -157,6 +158,7 @@ export function OrganizationDetails({ initial, operatorId }: { initial: Organiza
       </div>
       {editing && <OrganizationNameForm initialName={record.name} onSave={rename} onCancel={() => setEditing(false)} />}
       <ContactList organization={record} operatorId={operatorId} confirmedImportId={flow.result?.importId} />
+      <CampaignControls organizationId={record.id} />
       {previewOpen && !flow.attempt && <FilePreviewForm organization={record} onConfirm={(file, confirmation) => {
         setPreviewOpen(false);
         void flow.save(file, confirmation);

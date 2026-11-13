@@ -6,6 +6,7 @@ import type { ContactListItem, ContactListPage } from "../../contacts.ts";
 import type { ContactSuppression } from "../../contact-suppressions.ts";
 import type { Organization } from "../../organizations.ts";
 import { formatPreviewCount } from "../../import-preview.ts";
+import { buildViberChatUrl } from "../../viber-link.ts";
 import { ImportTime } from "./contact-import-controls.tsx";
 import { errorMessage, primaryButton, RegistryError, registryRequest, secondaryButton } from "./registry-ui.tsx";
 import { ContactSuppressionDialog } from "./contact-suppression-dialog.tsx";
@@ -26,6 +27,7 @@ export function ContactList({ organization, operatorId, confirmedImportId }: {
   const [refresh, setRefresh] = useState(0);
   const [selectedSuppression, setSelectedSuppression] = useState<ContactListItem | null>(null);
   const [selectedBasis, setSelectedBasis] = useState<ContactListItem | null>(null);
+  const [viberMessage, setViberMessage] = useState("Почитувани, ве потсетуваме за вашиот термин.");
   const basisReturnFocus = useRef<HTMLElement | null>(null);
   const requestSequence = useRef(0);
   const refreshedImport = useRef<string | null>(null);
@@ -159,12 +161,23 @@ export function ContactList({ organization, operatorId, confirmedImportId }: {
           <p className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-300">Нема контакти што одговараат на пребарувањето.</p>
         ) : (
           <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="viber-prefill-message" className="text-xs font-medium text-slate-300">Viber порака за копирање:</label>
+              <input
+                id="viber-prefill-message"
+                type="text"
+                value={viberMessage}
+                onChange={(e) => setViberMessage(e.target.value)}
+                placeholder="Внесете порака за Viber..."
+                className="min-w-64 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100"
+              />
+            </div>
             <p className="text-sm text-slate-300">
               Совпаднати резултати: <strong className="text-slate-100 tabular-nums">{formatPreviewCount(page.matchedContacts)}</strong>
             </p>
             <ul className="divide-y divide-slate-700 rounded-lg border border-slate-700" aria-label="Зачувани контакти">
               {page.items.map((contact) => (
-                <li key={contact.id} className="grid min-w-0 gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+                <li key={contact.id} className="flex min-w-0 flex-col gap-3 px-4 py-3">
                   <div className="min-w-0 space-y-1.5">
                     <span className="block wrap-anywhere font-medium text-teal-100">{contact.normalizedPhone}</span>
                     <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${contact.hasSuppression ? "bg-rose-950 text-rose-200" : "bg-slate-800 text-slate-300"}`}>
@@ -172,12 +185,51 @@ export function ContactList({ organization, operatorId, confirmedImportId }: {
                     </span>
                     <span className="block text-sm text-slate-300">Додаден на <ImportTime value={contact.createdAt} /></span>
                   </div>
-                  <div className="flex flex-wrap justify-end gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => setSelectedSuppression(contact)} className={secondaryButton}>Отвори контакт</button>
                     <button type="button" onClick={(event) => {
                       basisReturnFocus.current = event.currentTarget;
                       setSelectedBasis(contact);
                     }} className={secondaryButton}>Основа за контакт</button>
+                    {buildViberChatUrl(contact.normalizedPhone) && (
+                      <>
+                        <a href={buildViberChatUrl(contact.normalizedPhone)!} className={secondaryButton}>Отвори во Viber</a>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (viberMessage.trim().length > 0) {
+                              await navigator.clipboard?.writeText(viberMessage.trim()).catch(() => {});
+                            }
+                            window.location.href = buildViberChatUrl(contact.normalizedPhone)!;
+                          }}
+                          className={secondaryButton}
+                        >
+                          Копирај и отвори во Viber
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      disabled={contact.hasSuppression}
+                      onClick={async () => {
+                        const text = window.prompt(`SMS порака до ${contact.normalizedPhone}:`, "Почитувани, ве потсетуваме за вашиот термин.");
+                        if (!text || text.trim().length === 0) return;
+                        try {
+                          const res = await fetch(`/api/organizations/${organization.id}/contacts/${contact.id}/send-sms`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ message: text }),
+                          });
+                          const data = (await res.json()) as { message?: string; externalId?: string };
+                          window.alert(res.ok ? `SMS прифатена за испраќање (${data.externalId ?? ""}).` : (data.message ?? "Грешка при испраќање."));
+                        } catch {
+                          window.alert("Мрежна грешка при испраќање SMS.");
+                        }
+                      }}
+                      className={secondaryButton}
+                    >
+                      Испрати SMS
+                    </button>
                   </div>
                 </li>
               ))}

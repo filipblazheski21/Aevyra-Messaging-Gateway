@@ -220,3 +220,14 @@ try {
 `db:provision` е намерно ограничен на локалниот Docker Desktop Linux engine, `127.0.0.1` и проверениот Compose проект. Ова не е VPS provision алатка и проектот нема потврдена продукциска постапка за распоредување.
 
 Видете [запис за проверките](TESTING.md) и [тековна состојба](PROGRESS.md).
+
+## Нови функционалности (Шаблони, Кампањи, Редица, SMSGate и Viber)
+
+- **Миграции**: Вкупно 9 миграции (`1794229200000_organizations` до `1794229200008_campaign_controls`) со `SELECT` и колонски `INSERT` права за `aevyra_app`.
+- **Шаблони и SMS сегменти**: `/api/organizations/[id]/templates` и `/api/organizations/[id]/templates/preview` (GSM-7 и UCS-2 кирилица).
+- **Кампањи, одобрување, редица и контроли**: `/api/organizations/[id]/campaigns`, `.../approve`, `.../enqueue` и `.../control` (`START`, `STOP`, `RESUME`, `CANCEL`).
+- **Работен процес**: `apps/worker/src/scheduler.ts` (`Europe/Skopje` работни часови, рандомизиран интервал 15–45s преку `randomSendIntervalMs`), `apps/worker/src/channel-selection.ts` (Viber приоритет за потврдени броеви, SMS за броеви означени без Viber, без автоматски SMS fallback при неизвесност) и `apps/worker/src/sms-gateway.ts` (SMSGate адаптер).
+- **Директно испраќање SMS и Viber линк**:
+  - За директно испраќање преку копчето **„Испрати SMS“** (`/api/organizations/[id]/contacts/[contactId]/send-sms`), поставете `SMSGATE_URL`, `SMSGATE_USER` и `SMSGATE_PASSWORD` во `.env`.
+  - Копчето **„Отвори во Viber“** користи `viber://chat?number=...` за директно отворање на разговор, а **„Копирај и отвори во Viber“** ја копира пораката од полето **„Viber порака за копирање“** во clipboard пред отворање.
+- **Кориснички интерфејс за шаблони и кампањи**: Секцијата **„Шаблони и кампањи“** на страницата за организација овозможува создавање шаблон (со пресметка на SMS сегменти), создавање кампања, одобрување, ставање во редица и контроли (`Старт`, `Стоп`, `Продолжи`, `Откажи`).

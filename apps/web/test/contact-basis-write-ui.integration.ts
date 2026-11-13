@@ -325,7 +325,7 @@ test("евидентирање и повлекување основа преку
           await prepareRecord(browser, "SYNTHETIC-EXPIRED-SESSION");
           await browser.evaluate("window.__basisPostMode = 'lose-success'");
           await browser.evaluate(button("Потврди евидентирање"));
-          await browser.waitFor("document.querySelector('[role=dialog]').innerText.includes('Непотврдена операција')", "Изгубениот одговор да остави recovery контекст.");
+          await browser.waitFor("document.querySelector('[role=dialog]').innerText.includes('Непотврдена операција') && document.querySelector('[role=dialog]').innerText.includes('Повтори ја истата операција')", "Изгубениот одговор да остави recovery контекст.");
           const original = await browser.evaluate<ContactBasisWriteRequest>("window.__basisWriteBodies.at(-1)");
           await browser.evaluate("window.__basisPostMode = 'expired-session'");
           await browser.evaluate(button("Повтори ја истата операција"));
