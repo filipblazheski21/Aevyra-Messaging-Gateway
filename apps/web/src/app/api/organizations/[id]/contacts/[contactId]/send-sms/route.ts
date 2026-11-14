@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readServerConfig } from "@aevyra/config";
+import { claimSmsGateway, type SmsGatewayCredentials } from "@aevyra/db";
 import { NextResponse } from "next/server";
 import pg from "pg";
 import { getCurrentUserStrict } from "../../../../../../../server/auth.ts";
@@ -46,21 +47,13 @@ export async function POST(
     return NextResponse.json({ message: "Пораката мора да содржи меѓу 1 и 1000 знаци." }, { status: 400, headers: NO_STORE });
   }
 
-  const gateUrl = process.env.SMSGATE_URL?.trim();
-  const gateUser = process.env.SMSGATE_USER?.trim();
-  const gatePass = process.env.SMSGATE_PASSWORD?.trim();
-  if (!gateUrl || !gateUser || !gatePass) {
-    return NextResponse.json(
-      { message: "SMSGate не е конфигуриран (SMSGATE_URL, SMSGATE_USER, SMSGATE_PASSWORD)." },
-      { status: 503, headers: NO_STORE },
-    );
-  }
-
   const config = readServerConfig();
   const client = new pg.Client({ connectionString: config.databaseUrl });
   let phoneNumber: string;
+  let gateway: SmsGatewayCredentials | null;
   try {
     await client.connect();
+    await client.query("BEGIN");
     const res = await client.query<{ normalized_phone: string; suppressed: boolean }>(
       `
       SELECT
@@ -75,17 +68,33 @@ export async function POST(
       [contactId, organizationId],
     );
     if (res.rowCount === 0) {
+      await client.query("ROLLBACK");
       return NextResponse.json({ message: "Контактот не е пронајден." }, { status: 404, headers: NO_STORE });
     }
     if (res.rows[0]!.suppressed) {
+      await client.query("ROLLBACK");
       return NextResponse.json({ message: "Контактот е означен со „Не контактирај“." }, { status: 409, headers: NO_STORE });
     }
     phoneNumber = res.rows[0]!.normalized_phone;
+    gateway = await claimSmsGateway(client);
+    await client.query("COMMIT");
   } catch {
+    await client.query("ROLLBACK").catch(() => {});
     return NextResponse.json({ message: "Базата на податоци е недостапна." }, { status: 503, headers: NO_STORE });
   } finally {
     await client.end().catch(() => {});
   }
+
+  if (!gateway) {
+    return NextResponse.json(
+      { message: "Нема активен SMS телефон. Додајте телефон во делот „SMS телефони“." },
+      { status: 503, headers: NO_STORE },
+    );
+  }
+
+  const gateUrl = gateway.baseUrl;
+  const gateUser = gateway.username;
+  const gatePass = gateway.password;
 
   const externalId = randomUUID();
   const auth = Buffer.from(`${gateUser}:${gatePass}`, "utf8").toString("base64");
@@ -106,11 +115,20 @@ export async function POST(
       signal: controller.signal,
     });
     if (!response.ok) {
-      return NextResponse.json({ message: `SMSGate врати грешка (${response.status}).` }, { status: 502, headers: NO_STORE });
+      return NextResponse.json(
+        { message: `Телефонот ${gateway.name} врати грешка (${response.status}).` },
+        { status: 502, headers: NO_STORE },
+      );
     }
-    return NextResponse.json({ status: "ACCEPTED", externalId }, { status: 200, headers: NO_STORE });
+    return NextResponse.json(
+      { status: "ACCEPTED", externalId, gateway: gateway.name },
+      { status: 200, headers: NO_STORE },
+    );
   } catch {
-    return NextResponse.json({ message: "Неуспешно поврзување со SMSGate." }, { status: 502, headers: NO_STORE });
+    return NextResponse.json(
+      { message: `Неуспешно поврзување со телефонот ${gateway.name}.` },
+      { status: 502, headers: NO_STORE },
+    );
   } finally {
     clearTimeout(timer);
   }

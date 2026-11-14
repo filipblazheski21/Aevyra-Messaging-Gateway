@@ -17,6 +17,7 @@ interface CampaignItem {
   channel: "SMS" | "VIBER";
   recipientCount: number;
   approvalStatus: "DRAFT" | "APPROVED" | "REVOKED";
+  progress?: { total: number; sent: number; failed: number; pending: number };
 }
 
 interface ContactItem {
@@ -235,6 +236,11 @@ export function CampaignControls({ organizationId }: { organizationId: string })
               <div>
                 <p className="font-medium text-slate-100">{c.name} ({c.channel})</p>
                 <p className="text-xs text-slate-400">Примачи: {c.recipientCount} · Статус: {c.approvalStatus}</p>
+                {c.progress && c.progress.total > 0 && (
+                  <p className="text-xs text-slate-400">
+                    Во редица: {c.progress.total} · Испратени: {c.progress.sent} · Неуспешни: {c.progress.failed} · Преостанати: {c.progress.pending}
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 {c.approvalStatus !== "APPROVED" && (

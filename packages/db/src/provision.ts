@@ -6,40 +6,60 @@ import { isLocalDatabaseUrl } from "./local-project.ts";
 
 export const appRole = "aevyra_app";
 const operationTimeoutMs = 30_000;
-const businessInsertColumns = {
-  contacts: ["organization_id", "normalized_phone"],
-  contact_imports: [
+
+type BusinessTablePermissions = { insert: readonly string[]; update: readonly string[] };
+
+const gatewayConfigColumns = [
+  "name", "base_url", "username", "password", "device_id", "enabled",
+] as const;
+
+const businessTablePermissions: Record<string, BusinessTablePermissions> = {
+  contacts: { insert: ["organization_id", "normalized_phone"], update: [] },
+  contact_imports: { insert: [
     "organization_id", "operator_id", "idempotency_key", "request_fingerprint", "source_sha256",
     "source_format", "delimiter", "sheet_index", "has_header", "phone_column", "policy_version", "library_version",
     "total_records", "excluded_empty_records", "empty_phone", "invalid", "review", "unique_valid", "duplicate_valid",
     "new_contacts", "existing_contacts",
-  ],
-  contact_import_contacts: ["organization_id", "import_id", "contact_id", "source_record_number"],
-  contact_suppressions: ["organization_id", "contact_id", "operator_id", "reason", "reference"],
-  contact_basis_events: [
+  ], update: [] },
+  contact_import_contacts: { insert: ["organization_id", "import_id", "contact_id", "source_record_number"], update: [] },
+  contact_suppressions: { insert: ["organization_id", "contact_id", "operator_id", "reason", "reference"], update: [] },
+  contact_basis_events: { insert: [
     "organization_id", "contact_id", "purpose", "channel", "event_type", "operator_id", "revision",
     "idempotency_key", "request_fingerprint", "basis_type", "reference", "expires_at",
-  ],
-  message_templates: ["organization_id", "purpose", "name", "created_by_operator_id"],
-  message_template_versions: [
+  ], update: [] },
+  message_templates: { insert: ["organization_id", "purpose", "name", "created_by_operator_id"], update: [] },
+  message_template_versions: { insert: [
     "template_id", "organization_id", "version_number", "body", "allowed_variables", "created_by_operator_id",
-  ],
-  campaigns: ["organization_id", "purpose", "channel", "name", "template_version_id", "created_by_operator_id"],
-  campaign_recipients: ["campaign_id", "organization_id", "contact_id", "frozen_body"],
-  campaign_approvals: ["campaign_id", "organization_id", "decision", "operator_id"],
-  message_jobs: [
+  ], update: [] },
+  campaigns: { insert: ["organization_id", "purpose", "channel", "name", "template_version_id", "created_by_operator_id"], update: [] },
+  campaign_recipients: { insert: ["campaign_id", "organization_id", "contact_id", "frozen_body"], update: [] },
+  campaign_approvals: { insert: ["campaign_id", "organization_id", "decision", "operator_id"], update: [] },
+  message_jobs: { insert: [
     "organization_id", "campaign_id", "recipient_id", "contact_id", "channel", "frozen_body", "idempotency_key",
-  ],
-  message_job_events: ["job_id", "organization_id", "status", "detail"],
-  campaign_control_events: ["campaign_id", "organization_id", "action", "operator_id"],
-} as const;
+    "gateway_id",
+  ], update: ["gateway_id"] },
+  message_job_events: { insert: ["job_id", "organization_id", "status", "detail"], update: [] },
+  campaign_control_events: { insert: ["campaign_id", "organization_id", "action", "operator_id"], update: [] },
+  sms_gateways: {
+    insert: [...gatewayConfigColumns],
+    update: [
+      ...gatewayConfigColumns,
+      "last_used_at", "last_checked_at", "last_check_status", "last_check_detail", "updated_at",
+    ],
+  },
+};
 
 async function provisionBusinessTables(client: pg.Client, role: string, identifier: string) {
-  for (const [table, columns] of Object.entries(businessInsertColumns)) {
+  for (const [table, permissions] of Object.entries(businessTablePermissions)) {
     const relation = `aevyra.${table}`;
+    const insertColumns = [...permissions.insert];
+    const updateColumns = [...permissions.update];
     await client.query(`REVOKE ALL ON TABLE ${relation} FROM PUBLIC, ${identifier}`);
     await client.query(`GRANT SELECT ON TABLE ${relation} TO ${identifier}`);
-    await client.query(`GRANT INSERT (${columns.join(", ")}) ON TABLE ${relation} TO ${identifier}`);
+    await client.query(`GRANT INSERT (${insertColumns.join(", ")}) ON TABLE ${relation} TO ${identifier}`);
+    if (updateColumns.length > 0) {
+      await client.query(`GRANT UPDATE (${updateColumns.join(", ")}) ON TABLE ${relation} TO ${identifier}`);
+    }
     const { rows: [access] } = await client.query<{ safe: boolean }>(`
       SELECT has_table_privilege($1, $2::regclass, 'SELECT')
         AND NOT has_table_privilege($1, $2::regclass,
@@ -47,10 +67,11 @@ async function provisionBusinessTables(client: pg.Client, role: string, identifi
         AND NOT EXISTS (
           SELECT FROM pg_attribute WHERE attrelid = $2::regclass AND attnum > 0 AND NOT attisdropped
             AND (has_column_privilege($1, attrelid, attnum, 'INSERT') <> (attname::text = ANY($3::text[]))
+              OR has_column_privilege($1, attrelid, attnum, 'UPDATE') <> (attname::text = ANY($4::text[]))
               OR has_column_privilege($1, attrelid, attnum,
-                'UPDATE,REFERENCES,SELECT WITH GRANT OPTION,INSERT WITH GRANT OPTION'))
+                'REFERENCES,SELECT WITH GRANT OPTION,INSERT WITH GRANT OPTION,UPDATE WITH GRANT OPTION'))
         ) AS safe
-    `, [role, relation, columns]);
+    `, [role, relation, insertColumns, updateColumns]);
     if (!access.safe) {
       throw new ServerConfigError("Ефективните PostgreSQL права за деловните табели ја надминуваат дозволената граница.");
     }
@@ -174,7 +195,7 @@ export async function provisionAppRole(adminUrl: URL, appUrl: URL) {
       throw new ServerConfigError("Новата конекција не ја користи очекуваната апликациска улога.");
     }
     await client.query("SELECT 1 FROM aevyra.organizations LIMIT 1");
-    for (const table of Object.keys(businessInsertColumns)) {
+    for (const table of Object.keys(businessTablePermissions)) {
       await client.query(`SELECT 1 FROM aevyra.${table} LIMIT 1`);
     }
   });

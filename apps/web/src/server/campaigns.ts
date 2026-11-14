@@ -22,6 +22,13 @@ async function withPostgresClient<T>(databaseUrl: string, fn: (client: pg.Client
   }
 }
 
+export interface CampaignProgress {
+  total: number;
+  sent: number;
+  failed: number;
+  pending: number;
+}
+
 export interface CampaignSummary {
   id: string;
   organizationId: string;
@@ -33,6 +40,7 @@ export interface CampaignSummary {
   approvalStatus: "DRAFT" | "APPROVED" | "REVOKED";
   approvedAt: string | null;
   createdAt: string;
+  progress: CampaignProgress;
 }
 
 export interface CreateCampaignRecipientInput {
@@ -79,6 +87,9 @@ export async function listCampaigns(organizationId: string): Promise<
         decision: "APPROVED" | "REVOKED" | null;
         approved_at: Date | null;
         created_at: Date;
+        job_total: string;
+        job_sent: string;
+        job_failed: string;
       }>(
         `
         SELECT
@@ -91,7 +102,8 @@ export async function listCampaigns(organizationId: string): Promise<
           (SELECT count(*)::text FROM aevyra.campaign_recipients cr WHERE cr.campaign_id = c.id) AS recipient_count,
           a.decision,
           a.created_at AS approved_at,
-          c.created_at
+          c.created_at,
+          s.job_total, s.job_sent, s.job_failed
         FROM aevyra.campaigns c
         LEFT JOIN LATERAL (
           SELECT decision, created_at
@@ -100,6 +112,21 @@ export async function listCampaigns(organizationId: string): Promise<
           ORDER BY created_at DESC, id DESC
           LIMIT 1
         ) a ON true
+        LEFT JOIN LATERAL (
+          SELECT
+            count(*)::text AS job_total,
+            count(*) FILTER (WHERE COALESCE(le.status, 'QUEUED') IN ('SENT', 'SIMULATED_SENT'))::text AS job_sent,
+            count(*) FILTER (WHERE COALESCE(le.status, 'QUEUED') = 'FAILED')::text AS job_failed
+          FROM aevyra.message_jobs j
+          LEFT JOIN LATERAL (
+            SELECT e.status
+            FROM aevyra.message_job_events e
+            WHERE e.job_id = j.id
+            ORDER BY e.created_at DESC, e.id DESC
+            LIMIT 1
+          ) le ON true
+          WHERE j.campaign_id = c.id
+        ) s ON true
         WHERE c.organization_id = $1::uuid
         ORDER BY c.created_at DESC, c.id DESC
         `,
@@ -108,18 +135,24 @@ export async function listCampaigns(organizationId: string): Promise<
 
       return {
         status: "OK" as const,
-        campaigns: rows.map((row) => ({
-          id: row.id,
-          organizationId: row.organization_id,
-          purpose: row.purpose,
-          channel: row.channel,
-          name: row.name,
-          templateVersionId: row.template_version_id,
-          recipientCount: Number.parseInt(row.recipient_count, 10),
-          approvalStatus: row.decision ?? "DRAFT",
-          approvedAt: row.approved_at ? row.approved_at.toISOString() : null,
-          createdAt: row.created_at.toISOString(),
-        })),
+        campaigns: rows.map((row) => {
+          const total = Number.parseInt(row.job_total, 10);
+          const sent = Number.parseInt(row.job_sent, 10);
+          const failed = Number.parseInt(row.job_failed, 10);
+          return {
+            id: row.id,
+            organizationId: row.organization_id,
+            purpose: row.purpose,
+            channel: row.channel,
+            name: row.name,
+            templateVersionId: row.template_version_id,
+            recipientCount: Number.parseInt(row.recipient_count, 10),
+            approvalStatus: row.decision ?? "DRAFT",
+            approvedAt: row.approved_at ? row.approved_at.toISOString() : null,
+            createdAt: row.created_at.toISOString(),
+            progress: { total, sent, failed, pending: Math.max(0, total - sent - failed) },
+          };
+        }),
       };
     });
   } catch {
@@ -227,6 +260,7 @@ export async function createCampaign(input: CreateCampaignInput): Promise<
             approvalStatus: "DRAFT",
             approvedAt: null,
             createdAt: campaignRow.created_at.toISOString(),
+            progress: { total: 0, sent: 0, failed: 0, pending: 0 },
           },
         };
       } catch (error) {

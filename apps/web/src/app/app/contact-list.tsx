@@ -220,8 +220,8 @@ export function ContactList({ organization, operatorId, confirmedImportId }: {
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ message: text }),
                           });
-                          const data = (await res.json()) as { message?: string; externalId?: string };
-                          window.alert(res.ok ? `SMS прифатена за испраќање (${data.externalId ?? ""}).` : (data.message ?? "Грешка при испраќање."));
+                          const data = (await res.json()) as { message?: string; externalId?: string; gateway?: string };
+                          window.alert(res.ok ? `SMS прифатена за испраќање преку ${data.gateway ?? "телефонот"}.` : (data.message ?? "Грешка при испраќање."));
                         } catch {
                           window.alert("Мрежна грешка при испраќање SMS.");
                         }

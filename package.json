@@ -9,6 +9,7 @@
     "dev": "node scripts/next.mjs dev apps/web --hostname 127.0.0.1",
     "start": "node scripts/next.mjs start apps/web --hostname 127.0.0.1",
     "worker": "node --env-file-if-exists=.env apps/worker/src/index.ts",
+    "worker:send": "node --env-file-if-exists=.env apps/worker/src/index.ts --send",
     "worker:check": "node --env-file-if-exists=.env apps/worker/src/index.ts --check",
     "db:up": "docker compose --env-file .env.admin up -d --wait postgres",
     "db:stop": "docker compose --env-file .env.admin stop postgres",

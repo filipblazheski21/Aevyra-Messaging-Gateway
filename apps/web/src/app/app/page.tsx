@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { SignOutForm } from "../auth-controls.tsx";
 import { getCurrentUser } from "../../server/auth.ts";
 import { OrganizationSection } from "./organization-controls.tsx";
+import { SmsGatewaysSection } from "./sms-gateways.tsx";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,7 @@ export default async function ProtectedPage() {
           <OrganizationSection kind="CLINIC" />
           <OrganizationSection kind="MARKETING" />
         </div>
+        <SmsGatewaysSection />
       </div>
     </main>
   );

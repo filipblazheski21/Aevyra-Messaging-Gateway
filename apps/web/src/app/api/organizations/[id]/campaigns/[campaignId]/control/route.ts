@@ -92,7 +92,7 @@ export async function POST(
         WHERE j.campaign_id = $1::uuid AND j.organization_id = $2::uuid
           AND NOT EXISTS (
             SELECT 1 FROM aevyra.message_job_events e
-            WHERE e.job_id = j.id AND e.status IN ('SIMULATED_SENT', 'FAILED', 'CANCELLED')
+            WHERE e.job_id = j.id AND e.status IN ('SENT', 'SIMULATED_SENT', 'FAILED', 'CANCELLED', 'SKIPPED')
           )
         `,
         [campaignId, organizationId],

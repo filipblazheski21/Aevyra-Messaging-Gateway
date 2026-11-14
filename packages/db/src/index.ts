@@ -1,5 +1,7 @@
 import pg from "pg";
 
+export * from "./sms-gateways.ts";
+
 const connectionTimeoutMs = 1500;
 const queryTimeoutMs = 1500;
 const closeTimeoutMs = 250;
